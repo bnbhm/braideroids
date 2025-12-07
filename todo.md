@@ -1,0 +1,2 @@
+- [ ] Gradient background (possibly dynamic) DARKGRAY to LIGHTGRAY
+- [x] Movement from input
