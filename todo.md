@@ -31,9 +31,15 @@
 - [ ] Exhaust smokes, both for boost and for turning
 - [ ] Since there is always cheat to simplify confusion of                    [LevelDifficulty]
       Higher difficulty levels will be first person, the world will rotate.
+- [ ] Drawing vertices looks nice! Maybe in later/earlier levels we could add that.
 
 
 # Tasks
 
 - [ ] Share the work on twitter tagging @jonathan_blow
 
+
+# Resources
+
+- [x] [Pikuma - Collision with Separating Axis Theorem (SAT)](https://youtu.be/-EsWKT7Doww?si=rIOki83dMiZCQAwm)
+- [ ] [javidx9 - Convex Polygon Collision](https://youtu.be/7Ik2vowGcU0?si=3JnGclYGdF5nZlUR)

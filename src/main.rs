@@ -1,18 +1,18 @@
-use std::f32::consts::PI;
+use std::f32::consts::{PI, TAU};
 
 use macroquad::prelude::*;
 
 #[macroquad::main("Braideroids : Asteroids = Braid;")]
 async fn main() {
-    let mut ship: Ship = Default::default();
+    let ship: &mut Ship = &mut Default::default();
     let asteroids = &mut [
         &mut Asteroid {
             body: Body {
-                lin_pos: Vec2 { x: 100.0, y: 100.0 },
-                lin_vel: Vec2 { x: 100.0, y: 001.0 },
+                lin_pos: Vec2 { x: 300.0, y: 300.0 },
+                lin_vel: Vec2 { x: 0.0, y: 0.0 },
                 lin_acc: Vec2 { x: 0.0, y: 0.0 },
                 ang_pos: PI,
-                ang_vel: 2.0,
+                ang_vel: 0.0,
                 ang_acc: 0.0,
             },
             sides: 6,
@@ -50,6 +50,8 @@ async fn main() {
         ship.draw();
         asteroids.iter().for_each(|asteroid| asteroid.draw());
 
+        collision(ship, asteroids[0]);
+
         next_frame().await;
     }
 }
@@ -70,30 +72,7 @@ struct Ship {
     body: Body,
 }
 
-impl Ship {
-    fn get_shape(&self) -> (Vec2, Vec2, Vec2) {
-        let radius = 50.0;
-        let v1 = self.body.lin_pos
-            - radius
-                * Vec2 {
-                    x: self.body.ang_pos.cos(),
-                    y: self.body.ang_pos.sin(),
-                };
-        let v2 = self.body.lin_pos
-            - radius / 2.0
-                * Vec2 {
-                    x: (self.body.ang_pos + 2.0 * PI / 3.0).cos(),
-                    y: (self.body.ang_pos + 2.0 * PI / 3.0).sin(),
-                };
-        let v3 = self.body.lin_pos
-            - radius / 2.0
-                * Vec2 {
-                    x: (self.body.ang_pos + 4.0 * PI / 3.0).cos(),
-                    y: (self.body.ang_pos + 4.0 * PI / 3.0).sin(),
-                };
-        return (v1, v2, v3);
-    }
-}
+impl Ship {}
 
 impl Default for Ship {
     fn default() -> Ship {
@@ -178,8 +157,15 @@ impl Update for Body {
 
 impl Draw for Ship {
     fn draw(&self) -> () {
-        let (v1, v2, v3) = self.get_shape();
-        draw_triangle_lines(v1, v2, v3, LINE_THICKNESS, LINE_COLOR);
+        let vertices = self.shape();
+        debug_assert!(vertices.len() == 3);
+        draw_triangle_lines(
+            vertices[0],
+            vertices[1],
+            vertices[2],
+            LINE_THICKNESS,
+            LINE_COLOR,
+        );
     }
 }
 
@@ -241,4 +227,75 @@ impl Draw for Asteroid {
             LINE_COLOR,
         );
     }
+}
+
+trait Shape {
+    fn shape(&self) -> Vec<Vec2>;
+}
+
+impl Shape for Ship {
+    fn shape(&self) -> Vec<Vec2> {
+        let radius = 50.0;
+        let v1 = self.body.lin_pos
+            - radius
+                * Vec2 {
+                    x: self.body.ang_pos.cos(),
+                    y: self.body.ang_pos.sin(),
+                };
+        let v2 = self.body.lin_pos
+            - radius / 2.0
+                * Vec2 {
+                    x: (self.body.ang_pos + 2.0 * PI / 3.0).cos(),
+                    y: (self.body.ang_pos + 2.0 * PI / 3.0).sin(),
+                };
+        let v3 = self.body.lin_pos
+            - radius / 2.0
+                * Vec2 {
+                    x: (self.body.ang_pos + 4.0 * PI / 3.0).cos(),
+                    y: (self.body.ang_pos + 4.0 * PI / 3.0).sin(),
+                };
+        return vec![v1, v2, v3];
+    }
+}
+
+impl Shape for Asteroid {
+    fn shape(&self) -> Vec<Vec2> {
+        let mut vertices: Vec<Vec2> = Vec::with_capacity(self.sides as usize);
+        for it in 0..self.sides as usize {
+            let angle = self.body.ang_pos + it as f32 * TAU / self.sides as f32;
+            vertices.push(
+                self.body.lin_pos
+                    + self.size
+                        * Vec2 {
+                            x: angle.cos(),
+                            y: angle.sin(),
+                        },
+            );
+        }
+        vertices
+    }
+}
+
+fn dbg_draw_vertices(vertices: Vec<Vec2>) {
+    vertices.iter().for_each(|vertice| {
+        draw_circle(vertice.x, vertice.y, 10.0, BLUE);
+    })
+}
+
+fn collision(body1: &impl Shape, body2: &Asteroid) -> bool {
+    let vertices1 = body1.shape();
+    let vertices2 = body2.shape();
+
+    dbg_draw_vertices(vertices1);
+    dbg_draw_vertices(vertices2);
+
+    draw_circle_lines(
+        body2.body.lin_pos.x,
+        body2.body.lin_pos.y,
+        body2.size,
+        2.0,
+        RED,
+    );
+
+    false
 }
