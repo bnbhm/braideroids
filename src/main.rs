@@ -1,24 +1,28 @@
 use std::f32::consts::{PI, TAU};
 
-use macroquad::prelude::*;
+use macroquad::{miniquad::gl::glTexImage2D, prelude::*};
 
 #[macroquad::main("Braideroids : Asteroids = Braid;")]
 async fn main() {
     let ship: &mut Ship = &mut Default::default();
-    let asteroids = &mut [
-        &mut Asteroid {
+    let mut bullets = Vec::<Bullet>::new();
+    let mut asteroids = vec![
+        /* Asteroid {
             body: Body {
-                lin_pos: Vec2 { x: 300.0, y: 300.0 },
-                lin_vel: Vec2 { x: 0.0, y: 0.0 },
+                lin_pos: Vec2 { x: 0.0, y: 300.0 },
+                lin_vel: Vec2 {
+                    x: -100.0,
+                    y: -100.0,
+                },
                 lin_acc: Vec2 { x: 0.0, y: 0.0 },
                 ang_pos: PI,
-                ang_vel: 0.0,
+                ang_vel: 3.0,
                 ang_acc: 0.0,
             },
             sides: 6,
             size: 100.0,
-        },
-        &mut Asteroid {
+        }, */
+        Asteroid {
             body: Body {
                 lin_pos: Vec2 { x: 200.0, y: 300.0 },
                 lin_vel: Vec2 {
@@ -31,26 +35,123 @@ async fn main() {
                 ang_acc: 0.0,
             },
             sides: 4,
-            size: 50.0,
+            size: 150.0,
         },
     ];
+    let player_image = load_texture("assets/panda.png").await.unwrap();
+    let bullet_image = load_texture("assets/gun.png").await.unwrap();
     let mut last_tick = get_time();
-    loop {
+    let mut game_over = false;
+    while !game_over {
+        if is_key_down(KeyCode::V) {
+            game_over = true;
+        }
         clear_background(LIGHTGRAY);
+
+        if is_key_released(KeyCode::F) {
+            bullets.push(Bullet {
+                body: Body {
+                    lin_pos: ship.shape()[0],
+                    lin_vel: -500.0
+                        * Vec2 {
+                            x: ship.body.ang_pos.cos(),
+                            y: ship.body.ang_pos.sin(),
+                        },
+                    lin_acc: Vec2 { x: 0.0, y: 0.0 },
+                    ang_pos: 0.0,
+                    ang_vel: 0.0,
+                    ang_acc: 0.0,
+                },
+            })
+        }
 
         let current_tick = get_time();
         let dt = current_tick - last_tick;
         last_tick = current_tick;
 
+        let mut new_asteroids: Vec<Asteroid> = vec![];
+        asteroids.retain(|asteroid| {
+            if collision(ship, asteroid) {
+                //game_over = true;
+            }
+
+            let mut asteroid_collided = false;
+            let rotation_theta = 0.25 * TAU;
+
+            bullets.retain(|bullet| {
+                let collided = collision(bullet, asteroid);
+                asteroid_collided = collided;
+                if collided && asteroid.sides > 3 {
+                    vec![
+                        Asteroid {
+                            body: Body {
+                                lin_pos: asteroid.body.lin_pos,
+                                lin_vel: asteroid.body.lin_vel
+                                    - Mat2 {
+                                        x_axis: Vec2 {
+                                            x: rotation_theta.cos(),
+                                            y: -rotation_theta.sin(),
+                                        },
+                                        y_axis: Vec2 {
+                                            x: rotation_theta.sin(),
+                                            y: -rotation_theta.cos(),
+                                        },
+                                    } * bullet.body.lin_vel,
+                                lin_acc: Vec2 { x: 0.0, y: 0.0 },
+                                ang_pos: asteroid.body.ang_pos,
+                                ang_vel: asteroid.body.ang_vel,
+                                ang_acc: 0.0,
+                            },
+                            sides: asteroid.sides - 1,
+                            size: asteroid.size / 2.0,
+                        },
+                        Asteroid {
+                            body: Body {
+                                lin_pos: asteroid.body.lin_pos,
+                                lin_vel: asteroid.body.lin_vel
+                                    + Mat2 {
+                                        x_axis: Vec2 {
+                                            x: rotation_theta.cos(),
+                                            y: -rotation_theta.sin(),
+                                        },
+                                        y_axis: Vec2 {
+                                            x: rotation_theta.sin(),
+                                            y: -rotation_theta.cos(),
+                                        },
+                                    } * bullet.body.lin_vel,
+                                lin_acc: Vec2 { x: 0.0, y: 0.0 },
+                                ang_pos: asteroid.body.ang_pos,
+                                ang_vel: asteroid.body.ang_vel,
+                                ang_acc: 0.0,
+                            },
+                            sides: asteroid.sides - 1,
+                            size: asteroid.size / 2.0,
+                        },
+                    ]
+                    .iter()
+                    .for_each(|new_asteroid| new_asteroids.push(new_asteroid.clone()))
+                }
+                !collided
+            });
+            !asteroid_collided
+        });
+        new_asteroids
+            .iter()
+            .for_each(|new_asteroid| asteroids.push(new_asteroid.clone()));
+
         ship.update(dt as f32);
         asteroids
             .iter_mut()
             .for_each(|asteroid| asteroid.update(dt as f32));
+        bullets
+            .iter_mut()
+            .for_each(|bullet| bullet.update(dt as f32));
 
         ship.draw();
         asteroids.iter().for_each(|asteroid| asteroid.draw());
-
-        collision(ship, asteroids[0]);
+        bullets.iter().for_each(|bullet| {
+            bullet.draw();
+        });
 
         next_frame().await;
     }
@@ -92,6 +193,7 @@ impl Default for Ship {
     }
 }
 
+#[derive(Clone)]
 struct Asteroid {
     body: Body,
     sides: u8,
@@ -100,6 +202,7 @@ struct Asteroid {
 
 impl Asteroid {}
 
+#[derive(Clone)]
 struct Body {
     lin_pos: Vec2,
     lin_vel: Vec2,
@@ -121,7 +224,7 @@ impl Update for Body {
                     Vec2 { x: 0.0, y: 0.0 }
                 },
                 -10.0
-                    * if self.ang_vel.abs() > 5.0 {
+                    * if self.ang_vel.abs() > 3.0 {
                         1.0 * self.ang_vel
                     } else {
                         0.0
@@ -171,34 +274,35 @@ impl Draw for Ship {
 
 impl Update for Ship {
     fn update(&mut self, dt: f32) -> () {
-        let (lin_boost, ang_boost): (Vec2, f32) = (
-            if is_key_down(KeyCode::Up) {
-                -800.0
-                    * Vec2 {
-                        x: self.body.ang_pos.cos(),
-                        y: self.body.ang_pos.sin(),
-                    }
-            } else {
-                // [AutoBreak]
-                -1.0 * self.body.lin_vel
-            },
-            if is_key_down(KeyCode::Left) {
-                -10.0
+        let input_left = is_key_down(KeyCode::Left) || is_key_down(KeyCode::J);
+        let input_right = is_key_down(KeyCode::Right) || is_key_down(KeyCode::L);
+
+        let lin_boost: Vec2 = if is_key_down(KeyCode::Up) || is_key_down(KeyCode::I) {
+            -800.0
+                * Vec2 {
+                    x: self.body.ang_pos.cos(),
+                    y: self.body.ang_pos.sin(),
+                }
+        } else {
+            // [AutoBreak]
+            -1.0 * self.body.lin_vel
+        };
+        let ang_boost: f32 = if input_left {
+                -20.0
             } else {
                 0.0
-            } + if is_key_down(KeyCode::Right) {
-                10.0
+            } + if input_right {
+                20.0
             } else {
                 0.0
             }
             // [AutoBreak]
              + 10.0
-                * if !is_key_down(KeyCode::Left) && !is_key_down(KeyCode::Right) {
+                * if !(input_left) && !(input_right) {
                     -self.body.ang_vel
                 } else {
-                    self.body.ang_vel
-                },
-        );
+                    0.0
+                };
 
         self.body.lin_acc = lin_boost;
         self.body.ang_acc = ang_boost;
@@ -226,6 +330,30 @@ impl Draw for Asteroid {
             LINE_THICKNESS,
             LINE_COLOR,
         );
+    }
+}
+
+struct Bullet {
+    body: Body,
+}
+
+impl Draw for Bullet {
+    fn draw(&self) -> () {
+        draw_circle_lines(
+            self.body.lin_pos.x,
+            self.body.lin_pos.y,
+            5.0,
+            LINE_THICKNESS,
+            LINE_COLOR,
+        );
+    }
+}
+
+impl Update for Bullet {
+    fn update(&mut self, dt: f32) {
+        self.body.ang_acc = 0.0;
+        self.body.lin_acc = Vec2 { x: 0.0, y: 0.0 };
+        self.body.update(dt);
     }
 }
 
@@ -275,6 +403,13 @@ impl Shape for Asteroid {
         vertices
     }
 }
+impl Shape for Bullet {
+    fn shape(&self) -> Vec<Vec2> {
+        let mut vertices = Vec::<Vec2>::new();
+        vertices.push(self.body.lin_pos);
+        vertices
+    }
+}
 
 fn dbg_draw_vertices(vertices: Vec<Vec2>) {
     vertices.iter().for_each(|vertice| {
@@ -282,20 +417,14 @@ fn dbg_draw_vertices(vertices: Vec<Vec2>) {
     })
 }
 
-fn collision(body1: &impl Shape, body2: &Asteroid) -> bool {
-    let vertices1 = body1.shape();
-    let vertices2 = body2.shape();
-
-    dbg_draw_vertices(vertices1);
-    dbg_draw_vertices(vertices2);
-
-    draw_circle_lines(
-        body2.body.lin_pos.x,
-        body2.body.lin_pos.y,
-        body2.size,
-        2.0,
-        RED,
-    );
+fn collision(object: &impl Shape, asteroid: &Asteroid) -> bool {
+    let dist_collision =
+        |lin_pos1: Vec2, lin_pos2: Vec2| -> bool { (lin_pos1 - lin_pos2).length() < asteroid.size };
+    for object_vertice in object.shape() {
+        if dist_collision(object_vertice, asteroid.body.lin_pos) {
+            return true;
+        }
+    }
 
     false
 }
