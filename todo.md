@@ -5,15 +5,16 @@
 
 # TODO
 
-- [ ] Gradient background (possibly dynamic) DARKGRAY to LIGHTGRAY
+- [ ] Levels
+  - [ ] Level 0: Ghost ship to navigate levels
 - [ ] Braid like time reversal.
-- [ ] Multiple players
-- [ ] Goal should be to avoid asteroids, so
-      Collision between ship and asteroid
 - [ ] Drag limit should depend on the size (mass) heavier should rotate slow. [DragClamp]
       Beginning levels will be familiar to earth-brained and less violent. [LevelDifficulty]
-- [ ] Bullets break asteroid while conserving momentum
 
+- [x] Goal should be to avoid asteroids, so
+      Collision between ship and asteroid
+- [x] Bullets break asteroid while conserving momentum
+- [x] Gradient background (possibly dynamic) DARKGRAY to LIGHTGRAY
 - [x] Quit by pressing v
 - [x] Asteroids are also rigid bodies!
 - [x] Drag only for high speeds, to give the feel of space. [:DragClamp]
@@ -26,6 +27,7 @@
 
 # Ideas
 
+- [ ] Multiple players
 - [ ] Since it feels tougher when the limits are high. [:LevelDifficulty] [DragClamp]
       Objects will become more sensitive and drag will reduce on higher levels.
 - [ ] Release light/radiation when dragging for high speeds [DragClamp]
@@ -34,10 +36,6 @@
 - [ ] Since there is always cheat to simplify confusion of [LevelDifficulty]
       Higher difficulty levels will be first person, the world will rotate.
 - [ ] Drawing vertices looks nice! Maybe in later/earlier levels we could add that.
-
-# Tasks
-
-- [ ] Share the work on twitter tagging @jonathan_blow
 
 # Resources
 

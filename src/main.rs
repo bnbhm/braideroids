@@ -10,50 +10,63 @@ enum GameMode {
     Menu,
 }
 
+struct GameAssets {
+    spritesheet: Texture2D,
+    blob_light: Texture2D,
+    blob_dark: Texture2D,
+}
+
+struct GameObjects {
+    ship: Ship,
+    asteroids: Vec<Asteroid>,
+    bullets: Vec<Bullet>,
+    smokes: Vec<Smoke>,
+}
+
+enum GameLevel {
+    Lvl1,
+    Lvl2,
+}
+
 #[macroquad::main("Braideroids : Asteroids = Braid;")]
 async fn main() {
     let music = load_sound("assets/catelectrician.wav").await.unwrap();
 
-    let ship: &mut Ship = &mut Default::default();
-    let mut bullets = Vec::<Bullet>::new();
-    let mut asteroids = vec![
-        Asteroid {
-            body: Body {
-                lin_pos: Vec2 { x: 0.0, y: 300.0 },
-                lin_vel: Vec2 {
-                    x: -100.0,
-                    y: -100.0,
-                },
-                lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                ang_pos: PI,
-                ang_vel: 3.0,
-                ang_acc: 0.0,
-            },
-            sides: 6,
-            size: 100.0,
-        },
-        Asteroid {
-            body: Body {
-                lin_pos: Vec2 { x: 200.0, y: 300.0 },
-                lin_vel: Vec2 {
-                    x: -200.0,
-                    y: 100.0,
-                },
-                lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                ang_pos: PI,
-                ang_vel: 4.0,
-                ang_acc: 0.0,
-            },
-            sides: 4,
-            size: 150.0,
-        },
-    ];
-
-    let mut smokes = Vec::<Smoke>::new();
-
     let spritesheet = load_texture("assets/all.png").await.unwrap();
     let blob_light = load_texture("assets/blob_light.png").await.unwrap();
     let blob_dark = load_texture("assets/blob_dark.png").await.unwrap();
+
+    let game_assets = GameAssets {
+        spritesheet,
+        blob_light,
+        blob_dark,
+    };
+
+    let ship: Ship = Default::default();
+    let bullets = Vec::<Bullet>::new();
+    let asteroids = vec![Asteroid {
+        body: Body {
+            lin_pos: Vec2 { x: 200.0, y: 300.0 },
+            lin_vel: Vec2 {
+                x: -200.0,
+                y: 100.0,
+            },
+            lin_acc: Vec2 { x: 0.0, y: 0.0 },
+            ang_pos: PI,
+            ang_vel: 4.0,
+            ang_acc: 0.0,
+        },
+        sides: 3,
+        size: 150.0,
+    }];
+    let smokes = Vec::<Smoke>::new();
+    let mut game_objects = GameObjects {
+        ship,
+        asteroids,
+        bullets,
+        smokes,
+    };
+
     let mut last_tick = get_time();
     let mut game_over = false;
     let mut game_mode = GameMode::Menu;
@@ -64,165 +77,230 @@ async fn main() {
             volume: 0.4,
         },
     );
+    let mut current_level = GameLevel::Lvl1;
     while !game_over {
-        let current_tick = get_time();
-        let dt = current_tick - last_tick;
-        last_tick = current_tick;
         match game_mode {
-            GameMode::Menu => {
-                if is_key_pressed(KeyCode::V) {
-                    game_over = true;
-                }
-                if is_key_pressed(KeyCode::Enter) {
-                    game_mode = GameMode::Play;
-                }
-                //clear_background(WHITE);
-                draw_texture(&blob_light, 0.0, 0.0, WHITE);
-                ship.draw(None);
-                asteroids.iter().for_each(|asteroid| asteroid.draw(None));
-                bullets.iter().for_each(|bullet| {
-                    bullet.draw(Some(&spritesheet));
-                });
-                draw_text("Braideroids", 50.0, 100.0, 60.0, BLACK);
-                draw_text(
-                    "Press enter to Start/Pause the game at any [time].",
-                    50.0,
-                    130.0,
-                    24.0,
-                    BLACK,
-                );
-            }
-            GameMode::Play => {
-                if is_key_pressed(KeyCode::Enter) {
-                    game_mode = GameMode::Menu;
-                }
-
-                ship.update(dt as f32);
-                asteroids
-                    .iter_mut()
-                    .for_each(|asteroid| asteroid.update(dt as f32));
-                bullets
-                    .iter_mut()
-                    .for_each(|bullet| bullet.update(dt as f32));
-                smokes.iter_mut().for_each(|smoke| smoke.update(dt as f32));
-
-                if is_key_pressed(KeyCode::F) {
-                    bullets.push(Bullet {
-                        body: Body {
-                            lin_pos: ship.shape()[0],
-                            lin_vel: -1000.0
-                                * Vec2 {
-                                    x: ship.body.ang_pos.cos(),
-                                    y: ship.body.ang_pos.sin(),
-                                }
-                                + 0.2 * ship.body.lin_vel,
-                            lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                            ang_pos: ship.body.ang_pos + TAU / 2.0,
-                            ang_vel: 0.0,
-                            ang_acc: 0.0,
-                        },
-                    })
-                }
-
-                let mut new_asteroids: Vec<Asteroid> = vec![];
-                for asteroid in &asteroids {
-                    if collision(ship, &asteroid) {
-                        game_over = false;
+            GameMode::Menu => menu(&mut game_mode, &game_assets, &game_objects),
+            GameMode::Play => match current_level {
+                GameLevel::Lvl1 => {
+                    let passed = lvl1(
+                        &mut game_over,
+                        &mut last_tick,
+                        &mut game_mode,
+                        &mut game_objects,
+                        &game_assets,
+                    );
+                    if passed {
+                        current_level = GameLevel::Lvl2;
                     }
                 }
-                asteroids.retain(|asteroid| {
-                    let mut asteroid_collided = false;
-                    let rotation_theta = 0.25 * TAU;
-
-                    bullets.retain(|bullet| {
-                        let collided = collision(bullet, asteroid);
-                        if collided {
-                            smokes.push(Smoke {
-                                body: Body {
-                                    lin_pos: asteroid.body.lin_pos,
-                                    ..Default::default()
-                                },
-                                timer: 0.0,
-                                size: 2.0 * asteroid.size,
-                            });
-                        };
-                        asteroid_collided = collided;
-                        if collided && asteroid.sides > 3 {
-                            vec![
-                                Asteroid {
-                                    body: Body {
-                                        lin_pos: asteroid.body.lin_pos,
-                                        lin_vel: asteroid.body.lin_vel
-                                            - Mat2 {
-                                                x_axis: Vec2 {
-                                                    x: rotation_theta.cos(),
-                                                    y: -rotation_theta.sin(),
-                                                },
-                                                y_axis: Vec2 {
-                                                    x: rotation_theta.sin(),
-                                                    y: -rotation_theta.cos(),
-                                                },
-                                            } * 0.2
-                                                * bullet.body.lin_vel,
-                                        lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                                        ang_pos: asteroid.body.ang_pos,
-                                        ang_vel: asteroid.body.ang_vel,
-                                        ang_acc: 0.0,
-                                    },
-                                    sides: asteroid.sides - 1,
-                                    size: 2.0 * asteroid.size / 3.0,
-                                },
-                                Asteroid {
-                                    body: Body {
-                                        lin_pos: asteroid.body.lin_pos,
-                                        lin_vel: asteroid.body.lin_vel
-                                            + Mat2 {
-                                                x_axis: Vec2 {
-                                                    x: rotation_theta.cos(),
-                                                    y: -rotation_theta.sin(),
-                                                },
-                                                y_axis: Vec2 {
-                                                    x: rotation_theta.sin(),
-                                                    y: -rotation_theta.cos(),
-                                                },
-                                            } * 0.2
-                                                * bullet.body.lin_vel,
-                                        lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                                        ang_pos: asteroid.body.ang_pos,
-                                        ang_vel: asteroid.body.ang_vel,
-                                        ang_acc: 0.0,
-                                    },
-                                    sides: asteroid.sides - 1,
-                                    size: 2.0 * asteroid.size / 3.0,
-                                },
-                            ]
-                            .iter()
-                            .for_each(|new_asteroid| new_asteroids.push(new_asteroid.clone()))
-                        }
-                        !collided
-                    });
-                    !asteroid_collided
-                });
-                bullets.retain(|bullet| !is_out_of_screen(&bullet.body));
-                smokes.retain(|smoke| smoke.timer < 3.0);
-                new_asteroids
-                    .iter()
-                    .for_each(|new_asteroid| asteroids.push(new_asteroid.clone()));
-
-                //clear_background(BLACK);
-                draw_texture(&blob_dark, 0.0, 0.0, WHITE);
-                smokes
-                    .iter()
-                    .for_each(|smoke| smoke.draw(Some(&spritesheet)));
-                ship.draw(None);
-                asteroids.iter().for_each(|asteroid| asteroid.draw(None));
-                bullets.iter().for_each(|bullet| {
-                    bullet.draw(Some(&spritesheet));
-                });
-            }
+                GameLevel::Lvl2 => {}
+            },
         };
         next_frame().await;
     }
+}
+
+fn menu(game_mode: &mut GameMode, game_assets: &GameAssets, game_objects: &GameObjects) {
+    if is_key_pressed(KeyCode::Enter) {
+        *game_mode = GameMode::Play;
+    }
+    //clear_background(WHITE);
+    draw_texture(&game_assets.blob_light, 0.0, 0.0, WHITE);
+    game_objects.ship.draw(None);
+    game_objects
+        .asteroids
+        .iter()
+        .for_each(|asteroid| asteroid.draw(None));
+    game_objects.bullets.iter().for_each(|bullet| {
+        bullet.draw(Some(&game_assets.spritesheet));
+    });
+    game_objects
+        .smokes
+        .iter()
+        .for_each(|smoke| smoke.draw(Some(&game_assets.spritesheet)));
+    /* draw_texture_ex(
+        &spritesheet,
+        120.0,
+        200.0,
+        WHITE,
+        DrawTextureParams {
+            source: Some(Rect::new(242.0, 365.0, 252.0, 252.0)),
+            rotation: 0.0,
+            ..Default::default()
+        },
+    );
+    draw_texture_ex(
+        &spritesheet,
+        500.0,
+        200.0,
+        RED,
+        DrawTextureParams {
+            source: Some(Rect::new(242.0, 365.0, 252.0, 252.0)),
+            rotation: 0.0,
+            ..Default::default()
+        },
+    ); */
+    draw_text("Braideroids", 50.0, 100.0, 60.0, BLACK);
+    draw_text(
+        "Press enter to Start/Pause the game at any [time].",
+        50.0,
+        130.0,
+        24.0,
+        BLACK,
+    );
+}
+
+fn lvl1(
+    game_over: &mut bool,
+    last_tick: &mut f64,
+    game_mode: &mut GameMode,
+    game_objects: &mut GameObjects,
+    game_assets: &GameAssets,
+) -> bool {
+    let current_tick = get_time();
+    let dt = current_tick - *last_tick;
+    *last_tick = current_tick;
+
+    if is_key_pressed(KeyCode::Enter) {
+        *game_mode = GameMode::Menu;
+    }
+
+    game_objects.ship.update(dt as f32);
+    game_objects
+        .asteroids
+        .iter_mut()
+        .for_each(|asteroid| asteroid.update(dt as f32));
+    game_objects
+        .bullets
+        .iter_mut()
+        .for_each(|bullet| bullet.update(dt as f32));
+    game_objects
+        .smokes
+        .iter_mut()
+        .for_each(|smoke| smoke.update(dt as f32));
+
+    if is_key_pressed(KeyCode::F) {
+        game_objects.bullets.push(Bullet {
+            body: Body {
+                lin_pos: game_objects.ship.shape()[0],
+                lin_vel: -1000.0
+                    * Vec2 {
+                        x: game_objects.ship.body.ang_pos.cos(),
+                        y: game_objects.ship.body.ang_pos.sin(),
+                    }
+                    + 0.2 * game_objects.ship.body.lin_vel,
+                lin_acc: Vec2 { x: 0.0, y: 0.0 },
+                ang_pos: game_objects.ship.body.ang_pos + TAU / 2.0,
+                ang_vel: 0.0,
+                ang_acc: 0.0,
+            },
+        })
+    }
+
+    let mut new_asteroids: Vec<Asteroid> = vec![];
+    for asteroid in &game_objects.asteroids {
+        if collision(&game_objects.ship, asteroid) {
+            *game_over = false;
+        }
+    }
+    game_objects
+        .bullets
+        .retain(|bullet| !is_out_of_screen(&bullet.body));
+    game_objects.asteroids.retain(|asteroid| {
+        let mut asteroid_collided = false;
+        let rotation_theta = 0.25 * TAU;
+
+        game_objects.bullets.retain(|bullet| {
+            let collided = collision(bullet, asteroid);
+            if collided {
+                game_objects.smokes.push(Smoke {
+                    body: Body {
+                        lin_pos: asteroid.body.lin_pos,
+                        ..Default::default()
+                    },
+                    timer: 0.0,
+                    size: 2.0 * asteroid.size,
+                });
+            };
+            asteroid_collided = collided;
+            if collided && asteroid.sides > 3 {
+                vec![
+                    Asteroid {
+                        body: Body {
+                            lin_pos: asteroid.body.lin_pos,
+                            lin_vel: asteroid.body.lin_vel
+                                - Mat2 {
+                                    x_axis: Vec2 {
+                                        x: rotation_theta.cos(),
+                                        y: -rotation_theta.sin(),
+                                    },
+                                    y_axis: Vec2 {
+                                        x: rotation_theta.sin(),
+                                        y: -rotation_theta.cos(),
+                                    },
+                                } * 0.2
+                                    * bullet.body.lin_vel,
+                            lin_acc: Vec2 { x: 0.0, y: 0.0 },
+                            ang_pos: asteroid.body.ang_pos,
+                            ang_vel: asteroid.body.ang_vel,
+                            ang_acc: 0.0,
+                        },
+                        sides: asteroid.sides - 1,
+                        size: 2.0 * asteroid.size / 3.0,
+                    },
+                    Asteroid {
+                        body: Body {
+                            lin_pos: asteroid.body.lin_pos,
+                            lin_vel: asteroid.body.lin_vel
+                                + Mat2 {
+                                    x_axis: Vec2 {
+                                        x: rotation_theta.cos(),
+                                        y: -rotation_theta.sin(),
+                                    },
+                                    y_axis: Vec2 {
+                                        x: rotation_theta.sin(),
+                                        y: -rotation_theta.cos(),
+                                    },
+                                } * 0.2
+                                    * bullet.body.lin_vel,
+                            lin_acc: Vec2 { x: 0.0, y: 0.0 },
+                            ang_pos: asteroid.body.ang_pos,
+                            ang_vel: asteroid.body.ang_vel,
+                            ang_acc: 0.0,
+                        },
+                        sides: asteroid.sides - 1,
+                        size: 2.0 * asteroid.size / 3.0,
+                    },
+                ]
+                .iter()
+                .for_each(|new_asteroid| new_asteroids.push(new_asteroid.clone()))
+            }
+            !collided
+        });
+        !asteroid_collided
+    });
+    game_objects.smokes.retain(|smoke| smoke.timer < 3.0);
+    new_asteroids
+        .iter()
+        .for_each(|new_asteroid| game_objects.asteroids.push(new_asteroid.clone()));
+
+    //clear_background(BLACK);
+    draw_texture(&game_assets.blob_dark, 0.0, 0.0, WHITE);
+    draw_text("Level 0", 100.0, 100.0, 50.0, GRAY);
+    game_objects
+        .smokes
+        .iter()
+        .for_each(|smoke| smoke.draw(Some(&game_assets.spritesheet)));
+    game_objects.ship.draw(None);
+    game_objects
+        .asteroids
+        .iter()
+        .for_each(|asteroid| asteroid.draw(None));
+    game_objects.bullets.iter().for_each(|bullet| {
+        bullet.draw(Some(&game_assets.spritesheet));
+    });
+    return game_objects.asteroids.len() == 0;
 }
 
 struct Smoke {
@@ -294,13 +372,10 @@ impl Default for Ship {
     fn default() -> Ship {
         Ship {
             body: Body {
-                lin_pos: Vec2 {
-                    x: screen_width() / 2.0,
-                    y: screen_height() / 2.0,
-                },
+                lin_pos: Vec2 { x: 535.0, y: 55.0 },
                 lin_vel: Vec2 { x: 0.0, y: 0.0 },
                 lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                ang_pos: PI / 2.0,
+                ang_pos: 3.0 / 4.0 * TAU,
                 ang_vel: 0.0,
                 ang_acc: 0.0,
             },
