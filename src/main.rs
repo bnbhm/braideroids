@@ -1,6 +1,11 @@
 use std::f32::consts::{PI, TAU};
 
-use macroquad::{miniquad::gl::glTexImage2D, prelude::*};
+use macroquad::{
+    audio::{load_sound, play_sound, PlaySoundParams},
+    color,
+    miniquad::gl::glTexImage2D,
+    prelude::*,
+};
 
 enum GameMode {
     Play,
@@ -9,6 +14,8 @@ enum GameMode {
 
 #[macroquad::main("Braideroids : Asteroids = Braid;")]
 async fn main() {
+    let music = load_sound("assets/catelectrician.wav").await.unwrap();
+
     let ship: &mut Ship = &mut Default::default();
     let mut bullets = Vec::<Bullet>::new();
     let mut asteroids = vec![
@@ -43,11 +50,22 @@ async fn main() {
             size: 150.0,
         },
     ];
-    let player_image = load_texture("assets/panda.png").await.unwrap();
-    let bullet_image = load_texture("assets/gun.png").await.unwrap();
+
+    let mut smokes = Vec::<Smoke>::new();
+
+    let spritesheet = load_texture("assets/all.png").await.unwrap();
+    let blob_light = load_texture("assets/blob_light.png").await.unwrap();
+    let blob_dark = load_texture("assets/blob_dark.png").await.unwrap();
     let mut last_tick = get_time();
     let mut game_over = false;
     let mut game_mode = GameMode::Menu;
+    play_sound(
+        &music,
+        PlaySoundParams {
+            looped: true,
+            volume: 0.4,
+        },
+    );
     while !game_over {
         let current_tick = get_time();
         let dt = current_tick - last_tick;
@@ -60,18 +78,35 @@ async fn main() {
                 if is_key_pressed(KeyCode::Enter) {
                     game_mode = GameMode::Play;
                 }
-                clear_background(WHITE);
-                ship.draw();
-                asteroids.iter().for_each(|asteroid| asteroid.draw());
+                //clear_background(WHITE);
+                draw_texture(&blob_light, 0.0, 0.0, WHITE);
+                ship.draw(None);
+                asteroids.iter().for_each(|asteroid| asteroid.draw(None));
                 bullets.iter().for_each(|bullet| {
-                    bullet.draw();
+                    bullet.draw(Some(&spritesheet));
                 });
+                draw_text("Braideroids", 50.0, 100.0, 60.0, BLACK);
+                draw_text(
+                    "Press enter to Start/Pause the game at any [time].",
+                    50.0,
+                    130.0,
+                    24.0,
+                    BLACK,
+                );
             }
             GameMode::Play => {
                 if is_key_pressed(KeyCode::Enter) {
                     game_mode = GameMode::Menu;
                 }
-                clear_background(BLACK);
+
+                ship.update(dt as f32);
+                asteroids
+                    .iter_mut()
+                    .for_each(|asteroid| asteroid.update(dt as f32));
+                bullets
+                    .iter_mut()
+                    .for_each(|bullet| bullet.update(dt as f32));
+                smokes.iter_mut().for_each(|smoke| smoke.update(dt as f32));
 
                 if is_key_pressed(KeyCode::F) {
                     bullets.push(Bullet {
@@ -82,13 +117,12 @@ async fn main() {
                                     x: ship.body.ang_pos.cos(),
                                     y: ship.body.ang_pos.sin(),
                                 }
-                                + ship.body.lin_vel,
+                                + 0.2 * ship.body.lin_vel,
                             lin_acc: Vec2 { x: 0.0, y: 0.0 },
-                            ang_pos: 0.0,
+                            ang_pos: ship.body.ang_pos + TAU / 2.0,
                             ang_vel: 0.0,
                             ang_acc: 0.0,
                         },
-                        timer: 0.0,
                     })
                 }
 
@@ -104,6 +138,16 @@ async fn main() {
 
                     bullets.retain(|bullet| {
                         let collided = collision(bullet, asteroid);
+                        if collided {
+                            smokes.push(Smoke {
+                                body: Body {
+                                    lin_pos: asteroid.body.lin_pos,
+                                    ..Default::default()
+                                },
+                                timer: 0.0,
+                                size: 2.0 * asteroid.size,
+                            });
+                        };
                         asteroid_collided = collided;
                         if collided && asteroid.sides > 3 {
                             vec![
@@ -157,26 +201,25 @@ async fn main() {
                             .iter()
                             .for_each(|new_asteroid| new_asteroids.push(new_asteroid.clone()))
                         }
-                        !collided && (bullet.timer <= 1.0)
+                        !collided
                     });
                     !asteroid_collided
                 });
+                bullets.retain(|bullet| !is_out_of_screen(&bullet.body));
+                smokes.retain(|smoke| smoke.timer < 3.0);
                 new_asteroids
                     .iter()
                     .for_each(|new_asteroid| asteroids.push(new_asteroid.clone()));
 
-                ship.update(dt as f32);
-                asteroids
-                    .iter_mut()
-                    .for_each(|asteroid| asteroid.update(dt as f32));
-                bullets
-                    .iter_mut()
-                    .for_each(|bullet| bullet.update(dt as f32));
-
-                ship.draw();
-                asteroids.iter().for_each(|asteroid| asteroid.draw());
+                //clear_background(BLACK);
+                draw_texture(&blob_dark, 0.0, 0.0, WHITE);
+                smokes
+                    .iter()
+                    .for_each(|smoke| smoke.draw(Some(&spritesheet)));
+                ship.draw(None);
+                asteroids.iter().for_each(|asteroid| asteroid.draw(None));
                 bullets.iter().for_each(|bullet| {
-                    bullet.draw();
+                    bullet.draw(Some(&spritesheet));
                 });
             }
         };
@@ -184,12 +227,59 @@ async fn main() {
     }
 }
 
+struct Smoke {
+    body: Body,
+    size: f32,
+    timer: f32,
+}
+
+impl Update for Smoke {
+    fn update(&mut self, dt: f32) -> () {
+        self.timer += dt;
+    }
+}
+
+impl Draw for Smoke {
+    fn draw(&self, spritesheet: Option<&macroquad::texture::Texture2D>) -> () {
+        let scale = 1.0 + self.timer / 12.0;
+        match spritesheet {
+            Some(spritesheet) => draw_texture_ex(
+                &spritesheet,
+                self.body.lin_pos.x - scale * self.size / 2.0,
+                self.body.lin_pos.y - scale * self.size / 2.0,
+                Color::new(1.0, 1.0, 1.0, 1.0 - self.timer / 3.0),
+                DrawTextureParams {
+                    source: Some(Rect::new(220.0, 640.0, 240.0, 240.0)),
+                    dest_size: Some(scale * Vec2::new(self.size, self.size)),
+                    ..Default::default()
+                },
+            ),
+            None => {
+                draw_circle_lines(
+                    self.body.lin_pos.x,
+                    self.body.lin_pos.y,
+                    5.0,
+                    LINE_THICKNESS,
+                    LINE_COLOR,
+                );
+            }
+        }
+    }
+}
+
+fn is_out_of_screen(body: &Body) -> bool {
+    return body.lin_pos.x <= 0.0
+        || body.lin_pos.y <= 0.0
+        || body.lin_pos.x >= screen_width()
+        || body.lin_pos.y >= screen_height();
+}
+
 // CONSTANTS
 const LINE_THICKNESS: f32 = 2.0;
 const LINE_COLOR: Color = DARKBLUE;
 
 trait Draw {
-    fn draw(&self) -> ();
+    fn draw(&self, spritesheet: Option<&Texture2D>) -> ();
 }
 
 trait Update {
@@ -240,6 +330,19 @@ struct Body {
     ang_acc: f32,
 }
 
+impl Default for Body {
+    fn default() -> Self {
+        Body {
+            lin_pos: Vec2 { x: 0.0, y: 0.0 },
+            lin_vel: Vec2 { x: 0.0, y: 0.0 },
+            lin_acc: Vec2 { x: 0.0, y: 0.0 },
+            ang_pos: 0.0,
+            ang_vel: 0.0,
+            ang_acc: 0.0,
+        }
+    }
+}
+
 impl Update for Body {
     fn update(&mut self, dt: f32) -> () {
         let (lin_fric, ang_fric) = {
@@ -250,12 +353,11 @@ impl Update for Body {
                 } else {
                     Vec2 { x: 0.0, y: 0.0 }
                 },
-                -10.0
-                    * if self.ang_vel.abs() > 10.0 {
-                        1.0 * self.ang_vel
-                    } else {
-                        0.0
-                    },
+                if self.ang_vel.abs() > 15.0 {
+                    15.0 * self.ang_vel / self.ang_vel.abs()
+                } else {
+                    0.0
+                },
             )
         };
 
@@ -286,16 +388,17 @@ impl Update for Body {
 }
 
 impl Draw for Ship {
-    fn draw(&self) -> () {
-        let vertices = self.shape();
-        debug_assert!(vertices.len() == 3);
-        draw_triangle_lines(
-            vertices[0],
-            vertices[1],
-            vertices[2],
-            LINE_THICKNESS,
-            LINE_COLOR,
-        );
+    fn draw(&self, spritesheet: Option<&Texture2D>) -> () {
+        match spritesheet {
+            Some(spritesheet) => {
+                draw_texture(spritesheet, self.body.lin_pos.x, self.body.lin_pos.y, WHITE)
+            }
+            None => {
+                let vertices = self.shape();
+                debug_assert!(vertices.len() == 3);
+                draw_triangle_lines(vertices[0], vertices[1], vertices[2], 5.0, ORANGE);
+            }
+        }
     }
 }
 
@@ -314,28 +417,29 @@ impl Update for Ship {
             // [AutoBreak]
             -10.0 * self.body.lin_vel
         };
-        let value = 50.0;
         let ang_boost: f32 = if input_left {
-                -value
+                -50.0
             } else if input_right {
-                value
+                50.0
             } else {
                 0.0
             }
             // [AutoBreak]
-             + if input_left || input_right {
-                    if self.body.ang_vel.abs() > 7.0 {
-                        -value/2.0*self.body.ang_vel
-                    } else{
-                        0.0
-                    }
-                } else {
-                    -value*self.body.ang_vel
-                };
+             + if !input_left && !input_right {
+                    -15.0*self.body.ang_vel
+                }
+                else{0.0};
 
         self.body.lin_acc = lin_boost;
         self.body.ang_acc = ang_boost;
 
+        // clamp
+        if self.body.lin_vel.length() > 1000.0 {
+            self.body.lin_vel = 1000.0 * self.body.lin_vel / self.body.lin_vel.length();
+        }
+        if self.body.ang_vel.abs() > 10.0 {
+            self.body.ang_vel = 10.0 * self.body.ang_vel / self.body.ang_vel.abs();
+        }
         self.body.update(dt);
     }
 }
@@ -349,33 +453,52 @@ impl Update for Asteroid {
 }
 
 impl Draw for Asteroid {
-    fn draw(&self) -> () {
-        draw_poly_lines(
-            self.body.lin_pos.x,
-            self.body.lin_pos.y,
-            self.sides,
-            self.size,
-            self.body.ang_pos.to_degrees(),
-            LINE_THICKNESS,
-            LINE_COLOR,
-        );
+    fn draw(&self, texture: Option<&Texture2D>) -> () {
+        match texture {
+            Some(texture) => draw_texture(texture, self.body.lin_pos.x, self.body.lin_pos.y, WHITE),
+            None => {
+                draw_poly_lines(
+                    self.body.lin_pos.x,
+                    self.body.lin_pos.y,
+                    self.sides,
+                    self.size,
+                    self.body.ang_pos.to_degrees(),
+                    LINE_THICKNESS,
+                    WHITE,
+                );
+            }
+        }
     }
 }
 
 struct Bullet {
     body: Body,
-    timer: f32,
 }
 
 impl Draw for Bullet {
-    fn draw(&self) -> () {
-        draw_circle_lines(
-            self.body.lin_pos.x,
-            self.body.lin_pos.y,
-            5.0,
-            LINE_THICKNESS,
-            LINE_COLOR,
-        );
+    fn draw(&self, spritesheet: Option<&macroquad::texture::Texture2D>) -> () {
+        match spritesheet {
+            Some(spritesheet) => draw_texture_ex(
+                &spritesheet,
+                self.body.lin_pos.x,
+                self.body.lin_pos.y,
+                WHITE,
+                DrawTextureParams {
+                    source: Some(Rect::new(1230.0, 810.0, 25.0, 25.0)),
+                    rotation: self.body.ang_pos,
+                    ..Default::default()
+                },
+            ),
+            None => {
+                draw_circle_lines(
+                    self.body.lin_pos.x,
+                    self.body.lin_pos.y,
+                    5.0,
+                    LINE_THICKNESS,
+                    LINE_COLOR,
+                );
+            }
+        }
     }
 }
 
@@ -384,7 +507,6 @@ impl Update for Bullet {
         self.body.ang_acc = 0.0;
         self.body.lin_acc = Vec2 { x: 0.0, y: 0.0 };
         self.body.update(dt);
-        self.timer += dt;
     }
 }
 
