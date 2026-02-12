@@ -2,8 +2,6 @@ use std::f32::consts::{PI, TAU};
 
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
-    color,
-    miniquad::gl::glTexImage2D,
     prelude::*,
 };
 
@@ -564,12 +562,6 @@ impl Shape for Bullet {
     }
 }
 
-fn dbg_draw_vertices(vertices: Vec<Vec2>) {
-    vertices.iter().for_each(|vertice| {
-        draw_circle(vertice.x, vertice.y, 10.0, BLUE);
-    })
-}
-
 fn collision(object: &impl Shape, asteroid: &Asteroid) -> bool {
     let dist_collision =
         |lin_pos1: Vec2, lin_pos2: Vec2| -> bool { (lin_pos1 - lin_pos2).length() < asteroid.size };
@@ -580,10 +572,4 @@ fn collision(object: &impl Shape, asteroid: &Asteroid) -> bool {
     }
 
     false
-}
-
-enum Entity {
-    Asteroid,
-    Bullet,
-    Ship,
 }
