@@ -1,5 +1,9 @@
 use std::f32::consts::{PI, TAU};
 
+mod collisions;
+
+use collisions::collision;
+
 use macroquad::{
     audio::{load_sound, play_sound, PlaySoundParams},
     prelude::*,
@@ -29,10 +33,18 @@ enum GameLevel {
     Lvl3,
 }
 
-trait Level {
-    fn level_init(&self);
+struct Level {
+    level_initialised: bool,
+}
 
-    fn level_loop(&self);
+impl Level {
+    fn level_init(&self) {
+        todo!();
+    }
+
+    fn level_loop(&self) {
+        todo!();
+    }
 }
 
 /* impl Level for GameLevel {
@@ -76,7 +88,7 @@ async fn main() {
     };
 
     let mut game_last_tick = get_time() as f32;
-    let mut game_mode = GameMode::Menu;
+    let mut game_mode = GameMode::Play(GameLevel::Lvl3);
     play_sound(
         &music,
         PlaySoundParams {
@@ -261,8 +273,48 @@ fn lvl3_run(
     let dt = current_tick - *game_last_tick;
     *game_last_tick = current_tick;
 
+    let obstacle = Rect {
+        x: 400.0,
+        y: 425.0,
+        w: 20.0,
+        h: 150.0,
+    };
+
+    game_objects
+        .bullets
+        .retain(|bullet| !collision(bullet, &obstacle));
+    //if collision(&game_objects.ship, &obstacle){game_objects.ship.lin_vel = Vec2::new(0.0,0.0);}
     game_objects.update(dt);
+
     game_objects.draw(Some(&game_assets.spritesheet));
+
+    draw_rectangle(obstacle.x, obstacle.y, obstacle.w, obstacle.h, WHITE);
+    draw_rectangle(
+        obstacle.x + obstacle.w / 2.0,
+        obstacle.y + obstacle.h / 2.0,
+        obstacle.w / 4.0,
+        obstacle.h / 4.0,
+        BLACK,
+    );
+}
+
+impl Shape for Rect {
+    fn shape(&self) -> Vec<Vec2> {
+        let mut vertices = vec![];
+        let left_top = Vec2::new(self.x, self.y);
+        vertices.push(left_top);
+        vertices.push(left_top + Vec2 { x: self.w, y: 0.0 });
+        vertices.push(left_top + Vec2 { x: 0.0, y: self.h });
+        vertices.push(
+            left_top
+                + Vec2 {
+                    x: self.w,
+                    y: self.h,
+                },
+        );
+
+        return vertices;
+    }
 }
 
 fn lvl2_init(game_last_tick: &mut f32, game_objects: &mut GameObjects) {
@@ -271,7 +323,7 @@ fn lvl2_init(game_last_tick: &mut f32, game_objects: &mut GameObjects) {
         body: Body {
             lin_pos: Vec2 { x: 700.0, y: 500.0 },
             lin_vel: Vec2 { x: 70.0, y: 0.0 },
-            ang_vel: 4.0,
+            ang_vel: 2.0,
             ..Default::default()
         },
         sides: 3,
@@ -280,7 +332,7 @@ fn lvl2_init(game_last_tick: &mut f32, game_objects: &mut GameObjects) {
     game_objects.bullets = vec![];
     game_objects.smokes = vec![];
     game_objects.ship.body = Body {
-        lin_pos: Vec2 { x: 100.0, y: 500.0 },
+        lin_pos: Vec2 { x: 200.0, y: 500.0 },
         ..Default::default()
     };
 }
@@ -668,7 +720,7 @@ impl Update for GameObjects {
                                             },
                                             y_axis: Vec2 {
                                                 x: rotation_theta.sin(),
-                                                y: -rotation_theta.cos(),
+                                                y: rotation_theta.cos(),
                                             },
                                         } * 0.2
                                             * bullet.body.lin_vel,
@@ -697,9 +749,8 @@ impl Update for GameObjects {
             .iter()
             .for_each(|new_asteroid| self.asteroids.push(new_asteroid.clone()));
         for asteroid in &self.asteroids {
-            if collision(&self.ship, &asteroid) {
+            if collision(&self.ship, asteroid) {
                 //*game_mode = GameMode::Menu;
-                return;
             }
         }
     }
@@ -711,7 +762,7 @@ trait Shape {
 
 impl Shape for Ship {
     fn shape(&self) -> Vec<Vec2> {
-        let radius = 50.0;
+        let radius = 30.0;
         let v1 = self.body.lin_pos
             - radius
                 * Vec2 {
@@ -719,13 +770,13 @@ impl Shape for Ship {
                     y: self.body.ang_pos.sin(),
                 };
         let v2 = self.body.lin_pos
-            - radius / 2.0
+            - 2.0 * radius / 3.0
                 * Vec2 {
                     x: (self.body.ang_pos + 2.0 * PI / 3.0).cos(),
                     y: (self.body.ang_pos + 2.0 * PI / 3.0).sin(),
                 };
         let v3 = self.body.lin_pos
-            - radius / 2.0
+            - 2.0 * radius / 3.0
                 * Vec2 {
                     x: (self.body.ang_pos + 4.0 * PI / 3.0).cos(),
                     y: (self.body.ang_pos + 4.0 * PI / 3.0).sin(),
@@ -736,37 +787,47 @@ impl Shape for Ship {
 
 impl Shape for Asteroid {
     fn shape(&self) -> Vec<Vec2> {
-        let mut vertices: Vec<Vec2> = Vec::with_capacity(self.sides as usize);
-        for it in 0..self.sides as usize {
-            let angle = self.body.ang_pos + it as f32 * TAU / self.sides as f32;
+        let center = self.body.lin_pos;
+        let radius = self.size;
+        let rotation = self.body.ang_pos;
+
+        let mut vertices = vec![];
+        let theta = TAU / self.sides as f32;
+        for it in 0..self.sides {
             vertices.push(
-                self.body.lin_pos
-                    + self.size
-                        * Vec2 {
-                            x: angle.cos(),
-                            y: angle.sin(),
-                        },
+                center
+                    + radius
+                        * Vec2::new(
+                            (it as f32 * theta + rotation).cos(),
+                            (it as f32 * theta + rotation).sin(),
+                        ),
             );
         }
-        vertices
+        return vertices;
     }
 }
+
 impl Shape for Bullet {
     fn shape(&self) -> Vec<Vec2> {
         let mut vertices = Vec::<Vec2>::new();
-        vertices.push(self.body.lin_pos);
+        let width = 10.0;
+        let height = 5.0;
+
+        let left_top = self.body.lin_pos
+            - Vec2 {
+                x: width / 2.0,
+                y: height / 2.0,
+            };
+        vertices.push(left_top);
+        vertices.push(left_top + Vec2 { x: width, y: 0.0 });
+        vertices.push(left_top + Vec2 { x: 0.0, y: height });
+        vertices.push(
+            left_top
+                + Vec2 {
+                    x: width,
+                    y: height,
+                },
+        );
         vertices
     }
-}
-
-fn collision(object: &impl Shape, asteroid: &Asteroid) -> bool {
-    let dist_collision =
-        |lin_pos1: Vec2, lin_pos2: Vec2| -> bool { (lin_pos1 - lin_pos2).length() < asteroid.size };
-    for object_vertice in object.shape() {
-        if dist_collision(object_vertice, asteroid.body.lin_pos) {
-            return true;
-        }
-    }
-
-    false
 }
