@@ -42,3 +42,4 @@
 - [x] [Pikuma - Collision with Separating Axis Theorem (SAT)](https://youtu.be/-EsWKT7Doww?si=rIOki83dMiZCQAwm)
 - [ ] [javidx9 - Convex Polygon Collision](https://youtu.be/7Ik2vowGcU0?si=3JnGclYGdF5nZlUR)
 - [ ] [dyn4j - SAT (Separating Axis Theorem)](https://dyn4j.org/2010/01/sat/)
+- [ ] [Gorilla Sun - An Algorithm for Polygon Intersections](https://www.gorillasun.de/blog/an-algorithm-for-polygon-intersections/#intersection-of-two-line-segments)
